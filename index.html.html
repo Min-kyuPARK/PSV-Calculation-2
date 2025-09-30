@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PSV Sizing Calculator (외부 화재 시)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+        }
+        .input-field {
+            @apply w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-right;
+        }
+        .output-field {
+            @apply w-full p-2 bg-gray-100 border border-gray-300 rounded-md font-bold text-indigo-700 text-right;
+        }
+        .label-text {
+            @apply text-sm font-medium text-gray-700 block;
+        }
+        .unit-text {
+            @apply text-sm text-gray-500 ml-2 shrink-0;
+        }
+        .input-group {
+            @apply flex items-center;
+        }
+        .input-wrapper {
+            @apply flex items-center;
+        }
+        .input-wrapper .input-group {
+            flex-grow: 1;
+        }
+        #calculator-modal {
+            display: none;
+        }
+        .status-ok {
+            @apply bg-green-100 text-green-800 font-bold p-2 rounded-md text-center;
+        }
+        .status-fail {
+            @apply bg-red-100 text-red-800 font-bold p-2 rounded-md text-center;
+        }
+        @media print {
+            body {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            .no-print {
+                display: none !important;
+            }
+            .container {
+                box-shadow: none !important;
+                border: 1px solid #ccc;
+            }
+            main, .p-6.md\:p-8 {
+                grid-template-columns: 1fr;
+            }
+            .bg-indigo-50 {
+                background-color: #f0f2ff !important;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 p-4 md:p-8">
+    <div class="container mx-auto max-w-6xl bg-white rounded-xl shadow-lg">
+        <header class="bg-indigo-700 text-white p-6 rounded-t-xl flex justify-between items-center">
+            <div>
+                <h1 class="text-3xl font-bold">PSV Sizing Calculator</h1>
+                <p class="mt-1">외부 화재 시 소요분출량 및 오리피스 면적 계산 (External Fire Case)</p>
+            </div>
+            <div class="flex space-x-2 no-print">
+                <button id="save-btn" class="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 text-sm">현재 값 저장</button>
+                <button id="load-btn" class="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 text-sm">저장 값 불러오기</button>
+                <button id="print-btn" class="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 text-sm">PDF 저장 / 인쇄</button>
+            </div>
+        </header>
+        <div id="notification" class="hidden text-center p-2 text-white"></div>
+
+        <main class="p-6 md:p-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- LEFT INPUTS COLUMN -->
+            <div class="space-y-6">
+                <section>
+                    <h2 class="text-xl font-semibold text-gray-800 border-b-2 border-indigo-200 pb-2 mb-4">1. 장비 사양 및 접액면적 계산</h2>
+                    <div class="space-y-2">
+                        <div class="grid grid-cols-[180px_1fr] items-center gap-x-4">
+                            <label for="vessel-orientation" class="label-text text-right">장비 형태</label>
+                            <select id="vessel-orientation" class="input-field calc-wetted-area">
+                                <option value="horizontal" selected>수평형 (Horizontal)</option>
+                                <option value="vertical">수직형 (Vertical)</option>
+                            </select>
+                        </div>
+                        <div class="grid grid-cols-[180px_1fr] items-center gap-x-4">
+                            <label for="vessel-d" class="label-text text-right">장비 직경 (D)</label>
+                            <div class="input-group"><input type="number" id="vessel-d" value="5100" class="input-field calc-wetted-area"><span class="unit-text">mm</span></div>
+                        </div>
+                         <div class="grid grid-cols-[180px_1fr] items-center gap-x-4">
+                            <label for="vessel-l" class="label-text text-right">장비 길이/높이 (L/H)</label>
+                            <div class="input-group"><input type="number" id="vessel-l" value="9600" class="input-field calc-wetted-area"><span class="unit-text">mm</span></div>
+                        </div>
+                        <div class="grid grid-cols-[180px_1fr] items-center gap-x-4">
+                            <label for="liquid-level" class="label-text text-right">운전 액위 (h)</label>
+                            <div class="input-group"><input type="number" id="liquid-level" value="2550" class="input-field calc-wetted-area"><span class="unit-text">mm</span></div>
+                        </div>
+                        <div class="grid grid-cols-[180px_1fr] items-center gap-x-4">
+                             <label class="label-text text-right">총 접액면적 (A_wetted)</label>
+                            <div class="input-group"><div id="out-wetted-area" class="output-field"></div><span class="unit-text">m²</span></div>
+                        </div>
+                        <div class="grid grid-cols-[180px_1fr] items-center gap-x-4">
+                            <label for="env-factor" class="label-text text-right">환경계수 (F)</label>
+                            <div class="input-group"><input type="number" id="env-factor" value="0.0875" step="0.0001" class="input-field"><span class="unit-text">-</span></div>
+                        </div>
+                    </div>
+                </section>
+
+                <section>
+                    <h2 class="text-xl font-semibold text-gray-800 border-b-2 border-indigo-200 pb-2 mb-4">2. 운전 조건</h2>
+                    <div class="space-y-2">
+                        <div class="grid grid-cols-[180px_1fr] items-center gap-x-4">
+                            <label for="set-pressure" class="label-text text-right">설정압력 (Pset)</label>
+                             <div class="input-group"><input type="number" id="set-pressure" value="0.35" class="input-field"><span class="unit-text">MPa.g</span></div>
+                        </div>
+                        <div class="grid grid-cols-[180px_1fr] items-center gap-x-4">
+                            <label for="relief-temp" class="label-text text-right">분출 시 온도 (T1)</label>
+                             <div class="input-group"><input type="number" id="relief-temp" value="75.3" class="input-field"><span class="unit-text">°C</span></div>
+                        </div>
+                    </div>
+                </section>
+                
+                <section>
+                    <h2 class="text-xl font-semibold text-gray-800 border-b-2 border-indigo-200 pb-2 mb-4">3. 유체 물성</h2>
+                    <div class="space-y-2">
+                        <div class="grid grid-cols-[180px_1fr] items-center gap-x-4">
+                            <label for="latent-heat" class="label-text text-right">증발잠열 (Hv)</label>
+                            <div class="input-wrapper">
+                                <div class="input-group"><input type="number" id="latent-heat" value="89.6" class="input-field"><span class="unit-text">kcal/kg</span></div>
+                                <button id="btn-open-hv-modal" class="ml-2 px-3 py-2 bg-indigo-500 text-white rounded-md hover:bg-indigo-600 text-sm shrink-0 no-print">계산</button>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-[180px_1fr] items-center gap-x-4">
+                            <label for="mol-weight" class="label-text text-right">분자량 (MW)</label>
+                            <div class="input-group"><input type="number" id="mol-weight" value="20" class="input-field"><span class="unit-text">kg/kmol</span></div>
+                        </div>
+                        <div class="grid grid-cols-[180px_1fr] items-center gap-x-4">
+                            <label for="cp-cv" class="label-text text-right">비열비 (k = Cp/Cv)</label>
+                            <div class="input-wrapper">
+                                <div class="input-group"><input type="number" id="cp-cv" value="1.399" class="input-field"><span class="unit-text">-</span></div>
+                                <button id="btn-open-k-modal" class="ml-2 px-3 py-2 bg-indigo-500 text-white rounded-md hover:bg-indigo-600 text-sm shrink-0 no-print">계산</button>
+                            </div>
+                        </div>
+                         <div class="grid grid-cols-[180px_1fr] items-center gap-x-4">
+                            <label for="z-factor" class="label-text text-right">압축인자 (Z)</label>
+                             <div class="input-group"><input type="number" id="z-factor" value="1" class="input-field"><span class="unit-text">-</span></div>
+                        </div>
+                        <div class="grid grid-cols-[180px_1fr] items-center gap-x-4">
+                            <label for="viscosity" class="label-text text-right">유체 점도 (Viscosity)</label>
+                             <div class="input-group"><input type="number" id="viscosity" value="0.01" class="input-field"><span class="unit-text">cP</span></div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- RIGHT OUTPUTS COLUMN -->
+            <div class="space-y-6 bg-indigo-50 p-6 rounded-lg">
+                <section>
+                    <h2 class="text-xl font-semibold text-gray-800 border-b-2 border-indigo-200 pb-2 mb-4">A. 총 입열량 계산</h2>
+                    <div class="space-y-2">
+                         <div class="grid grid-cols-[160px_1fr] items-center gap-x-4">
+                            <label class="label-text text-right">총 입열량 (Q)</label>
+                            <div class="input-group"><div id="out-heat-load" class="output-field"></div><span class="unit-text">kcal/hr</span></div>
+                        </div>
+                    </div>
+                </section>
+
+                <section>
+                    <h2 class="text-xl font-semibold text-gray-800 border-b-2 border-indigo-200 pb-2 mb-4">B. 소요분출량 계산</h2>
+                    <div class="space-y-2">
+                        <div class="grid grid-cols-[160px_1fr] items-center gap-x-4">
+                            <label class="label-text text-right">분출압력 (P1)</label>
+                             <div class="input-group"><div id="out-relief-pressure" class="output-field"></div><span class="unit-text">MPa.a</span></div>
+                        </div>
+                        <div class="grid grid-cols-[160px_1fr] items-center gap-x-4">
+                            <label class="label-text text-right">분출 시 온도 (T1)</label>
+                             <div class="input-group"><div id="out-relief-temp-k" class="output-field"></div><span class="unit-text">K</span></div>
+                        </div>
+                        <div class="grid grid-cols-[160px_1fr] items-center gap-x-4">
+                            <label class="label-text text-right">소요분출량 (W)</label>
+                            <div class="input-group"><div id="out-req-flowrate" class="output-field text-lg"></div><span class="unit-text">kg/hr</span></div>
+                        </div>
+                    </div>
+                </section>
+
+                <section>
+                    <h2 class="text-xl font-semibold text-gray-800 border-b-2 border-indigo-200 pb-2 mb-4">C. PSV 오리피스 면적 계산</h2>
+                    <div class="space-y-2">
+                        <div class="grid grid-cols-[160px_1fr] items-center gap-x-4">
+                            <label class="label-text text-right">필요 오리피스 면적 (A_req)</label>
+                            <div class="input-group"><div id="out-req-orifice-area" class="output-field text-lg text-red-600"></div><span class="unit-text">mm²</span></div>
+                        </div>
+                        <div class="grid grid-cols-[160px_1fr] items-center gap-x-4">
+                            <label class="label-text text-right">선택 오리피스 규격</label>
+                            <div id="out-selected-orifice-size" class="output-field"></div>
+                        </div>
+                        <div class="grid grid-cols-[160px_1fr] items-center gap-x-4">
+                            <label class="label-text text-right">선택 오리피스 면적</label>
+                            <div class="input-group"><div id="out-selected-orifice-area" class="output-field"></div><span class="unit-text">mm²</span></div>
+                        </div>
+                        <div class="grid grid-cols-[160px_1fr] items-center gap-x-4">
+                            <label class="label-text text-right">선택 오리피스 배출용량</label>
+                            <div class="input-group"><div id="out-orifice-capacity" class="output-field font-bold text-green-700"></div><span class="unit-text">kg/hr</span></div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+
+        <hr class="my-6 border-t-2 border-gray-200">
+
+        <!-- LINE SIZING SECTION -->
+        <div class="p-6 md:p-8">
+            <h2 class="text-2xl font-bold text-indigo-800 mb-4">5. Inlet / Outlet Line Sizing</h2>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Line Sizing Inputs -->
+                <div class="space-y-6">
+                    <section>
+                         <h3 class="text-xl font-semibold text-gray-800 border-b-2 border-indigo-200 pb-2 mb-4">Line Sizing Parameters</h3>
+                         <div class="space-y-2">
+                             <div class="grid grid-cols-[180px_1fr] items-center gap-x-4">
+                                <label for="psv-type" class="label-text text-right">PSV Type</label>
+                                <select id="psv-type" class="input-field"><option value="conventional" selected>Conventional</option><option value="balanced">Balanced Bellows</option></select>
+                            </div>
+                            <div class="grid grid-cols-[180px_1fr] items-center gap-x-4">
+                                <label for="rupture-disk" class="label-text text-right">PSV 전단 파열판 유무</label>
+                                <select id="rupture-disk" class="input-field"><option value="no" selected>No (Kc = 1.0)</option><option value="yes">Yes (Kc = 0.9)</option></select>
+                           </div>
+                           <div class="grid grid-cols-[180px_1fr] items-center gap-x-4">
+                                <label for="inlet-dia" class="label-text text-right">Inlet Pipe Dia.</label>
+                                <div class="input-group"><input type="number" id="inlet-dia" value="6" class="input-field"><span class="unit-text">in</span></div>
+                           </div>
+                           <div class="grid grid-cols-[180px_1fr] items-center gap-x-4">
+                                <label for="inlet-len" class="label-text text-right">Inlet Pipe Length</label>
+                                <div class="input-group"><input type="number" id="inlet-len" value="3" class="input-field"><span class="unit-text">m</span></div>
+                           </div>
+                            <div class="grid grid-cols-[180px_1fr] items-center gap-x-4">
+                                <label for="inlet-elbows" class="label-text text-right">Inlet 90° Elbows</label>
+                                <div class="input-group"><input type="number" id="inlet-elbows" value="2" class="input-field"><span class="unit-text">ea</span></div>
+                           </div>
+                           <div class="grid grid-cols-[180px_1fr] items-center gap-x-4">
+                                <label for="outlet-dia" class="label-text text-right">Outlet Pipe Dia.</label>
+                                <div class="input-group"><input type="number" id="outlet-dia" value="8" class="input-field"><span class="unit-text">in</span></div>
+                           </div>
+                           <div class="grid grid-cols-[180px_1fr] items-center gap-x-4">
+                                <label for="outlet-len" class="label-text text-right">Outlet Pipe Length</label>
+                                <div class="input-group"><input type="number" id="outlet-len" value="10" class="input-field"><span class="unit-text">m</span></div>
+                           </div>
+                            <div class="grid grid-cols-[180px_1fr] items-center gap-x-4">
+                                <label for="outlet-elbows" class="label-text text-right">Outlet 90° Elbows</label>
+                                <div class="input-group"><input type="number" id="outlet-elbows" value="3" class="input-field"><span class="unit-text">ea</span></div>
+                           </div>
+                            <div class="grid grid-cols-[180px_1fr] items-center gap-x-4">
+                                <label for="dest-pressure" class="label-text text-right">Destination Pressure</label>
+                                <div class="input-group"><input type="number" id="dest-pressure" value="0.01" class="input-field"><span class="unit-text">MPa.g</span></div>
+                           </div>
+                         </div>
+                    </section>
+                </div>
+                <!-- Line Sizing Outputs -->
+                <div class="space-y-6 bg-indigo-50 p-6 rounded-lg">
+                    <section>
+                        <h3 class="text-xl font-semibold text-gray-800 border-b-2 border-indigo-200 pb-2 mb-4">D. Inlet Line Sizing 결과</h3>
+                        <div class="space-y-2">
+                            <div class="grid grid-cols-[160px_1fr] items-center gap-x-4">
+                                <label class="label-text text-right">압력 강하 (ΔP)</label>
+                                <div class="input-group"><div id="out-inlet-dp-kpa" class="output-field"></div><span class="unit-text">kPa</span></div>
+                            </div>
+                            <div class="grid grid-cols-[160px_1fr] items-center gap-x-4">
+                                <label class="label-text text-right">ΔP (% of Pset)</label>
+                                <div class="input-group"><div id="out-inlet-dp-percent" class="output-field"></div><span class="unit-text">%</span></div>
+                            </div>
+                            <div class="grid grid-cols-[160px_1fr] items-center gap-x-4">
+                                <label class="label-text text-right">결과 (기준: 3% 이하)</label>
+                                <div id="out-inlet-status"></div>
+                            </div>
+                        </div>
+                    </section>
+                     <section>
+                        <h3 class="text-xl font-semibold text-gray-800 border-b-2 border-indigo-200 pb-2 mb-4">E. Outlet Line Sizing 결과</h3>
+                        <div class="space-y-2">
+                            <div class="grid grid-cols-[160px_1fr] items-center gap-x-4">
+                                <label class="label-text text-right">배압 (Back Pressure)</label>
+                                <div class="input-group"><div id="out-outlet-bp-mpag" class="output-field"></div><span class="unit-text">MPa.g</span></div>
+                            </div>
+                             <div class="grid grid-cols-[160px_1fr] items-center gap-x-4">
+                                <label class="label-text text-right">배압 (% of Pset)</label>
+                                <div class="input-group"><div id="out-outlet-bp-percent" class="output-field"></div><span class="unit-text">%</span></div>
+                            </div>
+                             <div class="grid grid-cols-[160px_1fr] items-center gap-x-4">
+                                <label class="label-text text-right">Outlet Mach No.</label>
+                                <div id="out-outlet-mach" class="output-field"></div>
+                            </div>
+                            <div class="grid grid-cols-[160px_1fr] items-center gap-x-4">
+                                <label class="label-text text-right">결과 (기준: <span id="outlet-criteria-text">10</span>% 이하)</label>
+                                <div id="out-outlet-status"></div>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL POPUP -->
+    <div id="calculator-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full">
+        <div class="relative top-20 mx-auto p-5 border w-full max-w-3xl shadow-lg rounded-md bg-white">
+            <div class="flex justify-between items-center border-b pb-3">
+                <h3 id="modal-title" class="text-2xl font-bold text-gray-800">계산기</h3>
+                <button id="btn-close-modal" class="text-black close-modal">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <div class="mt-5">
+                <!-- Latent Heat Calculator -->
+                <div id="hv-calculator-content" class="space-y-4">
+                     <p class="text-sm text-gray-600">혼합 Gas의 조성을 입력하여 전체 증발잠열을 계산합니다.</p>
+                     <div id="hv-table" class="max-h-60 overflow-y-auto"></div>
+                     <div class="flex justify-between items-center p-3 bg-gray-50 rounded-md">
+                         <div id="hv-composition-warning" class="text-sm text-red-500 font-semibold"></div>
+                         <div class="text-right">
+                            <span class="text-gray-700">총 증발잠열 (kcal/kg):</span>
+                            <span id="hv-result" class="text-xl font-bold text-indigo-700 ml-2">0.00</span>
+                         </div>
+                     </div>
+                     <div class="flex justify-end space-x-3 pt-3 border-t">
+                        <button id="btn-calculate-hv" class="px-4 py-2 bg-blue-500 text-white text-base font-medium rounded-md shadow-sm hover:bg-blue-600">계산하기</button>
+                        <button id="btn-apply-hv" class="px-4 py-2 bg-indigo-600 text-white text-base font-medium rounded-md shadow-sm hover:bg-indigo-700">결과 적용</button>
+                    </div>
+                </div>
+
+                <!-- Specific Heat Ratio Calculator -->
+                <div id="k-calculator-content" class="space-y-4">
+                     <p class="text-sm text-gray-600">혼합 Gas의 조성을 입력하고 분출 온도를 확인하여 비열비와 평균 분자량을 계산합니다.</p>
+                     <div>
+                        <label for="k-temp-input" class="label-text">분출 시 온도 (T1)</label>
+                        <div class="input-group">
+                            <input type="number" id="k-temp-input" class="input-field w-1/3">
+                            <span class="unit-text">°C</span>
+                        </div>
+                     </div>
+                     <div id="k-table" class="max-h-60 overflow-y-auto"></div>
+                     <div class="flex justify-between items-center p-3 bg-gray-50 rounded-md">
+                         <div id="k-composition-warning" class="text-sm text-red-500 font-semibold"></div>
+                         <div class="text-right space-x-4">
+                            <span class="text-gray-700">평균 분자량 (kg/kmol): <span id="k-mw-result" class="text-xl font-bold text-indigo-700 ml-2">0.00</span></span>
+                            <span class="text-gray-700">혼합 비열비 (k): <span id="k-result" class="text-xl font-bold text-indigo-700 ml-2">0.000</span></span>
+                         </div>
+                     </div>
+                     <div class="flex justify-end space-x-3 pt-3 border-t">
+                        <button id="btn-calculate-k" class="px-4 py-2 bg-blue-500 text-white text-base font-medium rounded-md shadow-sm hover:bg-blue-600">계산하기</button>
+                        <button id="btn-apply-k" class="px-4 py-2 bg-indigo-600 text-white text-base font-medium rounded-md shadow-sm hover:bg-indigo-700">결과 적용</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const allInputs = document.querySelectorAll('.input-field');
+            const wettedAreaInputs = document.querySelectorAll('.calc-wetted-area');
+
+            const API_ORIFICES = { 'D': 126, 'E': 198, 'F': 356, 'G': 503, 'H': 780, 'J': 1288, 'K': 1856, 'L': 2775, 'M': 3938, 'N': 5493, 'P': 7292, 'Q': 11050, 'R': 16770, 'T': 26000 };
+            
+            const CHEMICAL_DATA = {
+                'HF':   { name: '플루오린화수소 (HF)',   hv: 89.6,  mw: 20.01,   cp_coeffs: [2.896362E+01, 8.7183E-05, -3.116E-06, 2.33E-09] },
+                'HCl':  { name: '염화수소 (HCl)',     hv: 106.2, mw: 36.46,   cp_coeffs: [2.973720E+01, -5.694E-03, 1.80E-05, -1.04E-08] },
+                'PCl3': { name: '삼염화인 (PCl3)',    hv: 52.9,  mw: 137.33,  cp_coeffs: [7.529720E+01, 2.16E-02, -2.79E-05, 1.13E-08] },
+                'PF5':  { name: '오플루오린화인 (PF5)', hv: 33.8,  mw: 125.97,  cp_coeffs: [7.075700E+01, 9.03E-02, -8.84E-05, 3.13E-08] },
+                'Cl2':  { name: '염소 (Cl2)',       hv: 68.8,  mw: 70.90,   cp_coeffs: [3.142800E+01, 1.44E-02, -1.71E-05, 8.02E-09] }
+            };
+
+             // --- MODAL LOGIC ---
+            const modal = document.getElementById('calculator-modal');
+            const modalTitle = document.getElementById('modal-title');
+            const btnOpenHvModal = document.getElementById('btn-open-hv-modal');
+            const btnOpenKModal = document.getElementById('btn-open-k-modal');
+            const btnCloseModal = document.getElementById('btn-close-modal');
+            const hvContent = document.getElementById('hv-calculator-content');
+            const kContent = document.getElementById('k-calculator-content');
+
+            function openModal(mode) {
+                if (mode === 'hv') {
+                    modalTitle.textContent = '혼합 Gas 증발잠열 계산기';
+                    hvContent.style.display = 'block'; kContent.style.display = 'none';
+                    populateHvTable();
+                } else if (mode === 'k') {
+                    modalTitle.textContent = '혼합 Gas 비열비/분자량 계산기';
+                    hvContent.style.display = 'none'; kContent.style.display = 'block';
+                    populateKTable();
+                    document.getElementById('k-temp-input').value = document.getElementById('relief-temp').value;
+                }
+                modal.style.display = 'block';
+            }
+            function closeModal() { modal.style.display = 'none'; }
+            btnOpenHvModal.addEventListener('click', () => openModal('hv'));
+            btnOpenKModal.addEventListener('click', () => openModal('k'));
+            btnCloseModal.addEventListener('click', closeModal);
+            window.addEventListener('click', (event) => { if (event.target == modal) closeModal(); });
+            
+            // -- HV Calculator --
+            const hvTableContainer = document.getElementById('hv-table');
+            const btnCalculateHv = document.getElementById('btn-calculate-hv');
+            const btnApplyHv = document.getElementById('btn-apply-hv');
+            const hvResultEl = document.getElementById('hv-result');
+            const hvWarningEl = document.getElementById('hv-composition-warning');
+            function populateHvTable() {
+                let tableHTML = `<table class="w-full text-sm text-left text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-100"><tr><th class="px-6 py-3">화학물질</th><th class="px-6 py-3">증발잠열 (kcal/kg)</th><th class="px-6 py-3">조성비 (wt %)</th></tr></thead><tbody>`;
+                for (const key in CHEMICAL_DATA) {
+                    tableHTML += `<tr class="bg-white border-b"><td class="px-6 py-4 font-medium text-gray-900">${CHEMICAL_DATA[key].name}</td><td class="px-6 py-4">${CHEMICAL_DATA[key].hv}</td><td class="px-6 py-4"><input type="number" class="input-field hv-composition" data-hv="${CHEMICAL_DATA[key].hv}" value="0" min="0" max="100"></td></tr>`;
+                }
+                tableHTML += `</tbody></table>`;
+                hvTableContainer.innerHTML = tableHTML;
+            }
+            btnCalculateHv.addEventListener('click', () => {
+                const inputs = document.querySelectorAll('.hv-composition');
+                let totalHv = 0, totalComp = 0;
+                inputs.forEach(input => {
+                    const comp = parseFloat(input.value) || 0;
+                    const hv = parseFloat(input.dataset.hv) || 0;
+                    if (comp > 0) totalHv += hv * (comp / 100);
+                    totalComp += comp;
+                });
+                hvResultEl.textContent = totalHv.toFixed(2);
+                hvWarningEl.textContent = (Math.abs(totalComp - 100) > 0.1 && totalComp > 0) ? `경고: 총 조성비가 ${totalComp.toFixed(1)}% 입니다.` : '';
+            });
+            btnApplyHv.addEventListener('click', () => {
+                document.getElementById('latent-heat').value = parseFloat(hvResultEl.textContent).toFixed(1);
+                closeModal();
+                updateWettedAreaAndCalculate();
+            });
+
+            // -- K Calculator --
+            const kTableContainer = document.getElementById('k-table');
+            const kTempInput = document.getElementById('k-temp-input');
+            const btnCalculateK = document.getElementById('btn-calculate-k');
+            const btnApplyK = document.getElementById('btn-apply-k');
+            const kResultEl = document.getElementById('k-result');
+            const kMwResultEl = document.getElementById('k-mw-result');
+            const kWarningEl = document.getElementById('k-composition-warning');
+            function populateKTable() {
+                let tableHTML = `<table class="w-full text-sm text-left text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-100"><tr><th class="px-6 py-3">화학물질</th><th class="px-6 py-3">조성비 (mol %)</th></tr></thead><tbody>`;
+                for (const key in CHEMICAL_DATA) {
+                    tableHTML += `<tr class="bg-white border-b"><td class="px-6 py-4 font-medium text-gray-900">${CHEMICAL_DATA[key].name}</td><td class="px-6 py-4"><input type="number" class="input-field k-composition" data-key="${key}" value="0" min="0" max="100"></td></tr>`;
+                }
+                tableHTML += `</tbody></table>`;
+                kTableContainer.innerHTML = tableHTML;
+            }
+            btnCalculateK.addEventListener('click', () => {
+                const tempC = parseFloat(kTempInput.value) || 0;
+                const tempK = tempC + 273.15;
+                const R = 8.314462; // J/mol*K
+                
+                const inputs = document.querySelectorAll('.k-composition');
+                let totalComp = 0, weightedCpSum = 0, weightedMwSum = 0;
+
+                inputs.forEach(input => {
+                    const comp = parseFloat(input.value) || 0;
+                    if (comp > 0) {
+                        const key = input.dataset.key;
+                        const data = CHEMICAL_DATA[key];
+                        const coeffs = data.cp_coeffs;
+                        // Cp = A + B*T + C*T^2 + D*T^3
+                        const cp = coeffs[0] + (coeffs[1] * tempK) + (coeffs[2] * tempK**2) + (coeffs[3] * tempK**3);
+                        const moleFraction = comp / 100;
+                        weightedCpSum += moleFraction * cp;
+                        weightedMwSum += moleFraction * data.mw;
+                    }
+                    totalComp += comp;
+                });
+                
+                if (totalComp > 0) {
+                    const cpMix = weightedCpSum;
+                    const cvMix = cpMix - R;
+                    const kMix = (cvMix > 0) ? (cpMix / cvMix) : 0;
+                    
+                    kResultEl.textContent = kMix.toFixed(3);
+                    kMwResultEl.textContent = weightedMwSum.toFixed(2);
+                } else {
+                    kResultEl.textContent = "0.000";
+                    kMwResultEl.textContent = "0.00";
+                }
+                kWarningEl.textContent = (Math.abs(totalComp - 100) > 0.1 && totalComp > 0) ? `경고: 총 조성비가 ${totalComp.toFixed(1)}% 입니다.` : '';
+            });
+            btnApplyK.addEventListener('click', () => {
+                document.getElementById('cp-cv').value = parseFloat(kResultEl.textContent).toFixed(3);
+                document.getElementById('mol-weight').value = parseFloat(kMwResultEl.textContent).toFixed(2);
+                closeModal();
+                updateWettedAreaAndCalculate();
+            });
+
+            function updateWettedAreaAndCalculate() {
+                const orientation = document.getElementById('vessel-orientation').value;
+                const D_mm = parseFloat(document.getElementById('vessel-d').value) || 0;
+                const L_mm = parseFloat(document.getElementById('vessel-l').value) || 0;
+                let h_mm = parseFloat(document.getElementById('liquid-level').value) || 0;
+
+                const D = D_mm / 1000, L = L_mm / 1000, R = D / 2;
+                let h = h_mm / 1000;
+                let wettedArea = 0;
+
+                if (D > 0 && L > 0 && h >= 0) {
+                    if (orientation === 'horizontal') {
+                        if (h > D) h = D;
+                        if (h > 0) {
+                            const alpha = Math.acos((R - h) / R);
+                            wettedArea = L * D * alpha + (R**2 * alpha - (R - h) * Math.sqrt(2 * R * h - h**2)) * 2;
+                        }
+                    } else { // vertical
+                        wettedArea = (Math.PI * R**2) + (Math.PI * D * Math.min(h, L));
+                    }
+                }
+                document.getElementById('out-wetted-area').textContent = wettedArea.toFixed(3);
+                calculateAll();
+            }
+            
+            function calculateAll() {
+                // --- A & B: Orifice Sizing ---
+                const A_wetted = parseFloat(document.getElementById('out-wetted-area').textContent) || 0;
+                const F = parseFloat(document.getElementById('env-factor').value) || 0;
+                const Pset_g = parseFloat(document.getElementById('set-pressure').value) || 0;
+                const T1_C = parseFloat(document.getElementById('relief-temp').value) || 0;
+                const Hv = parseFloat(document.getElementById('latent-heat').value) || 0;
+                const MW = parseFloat(document.getElementById('mol-weight').value) || 0;
+                const k = parseFloat(document.getElementById('cp-cv').value) || 0;
+                const Z = parseFloat(document.getElementById('z-factor').value) || 0;
+                
+                const Q = 61000 * F * Math.pow(A_wetted, 0.82);
+                const P1_a = (Pset_g * 1.21) + 0.1013;
+                const T1_K = T1_C + 273.15;
+                const W = (Hv > 0) ? (Q / Hv) : 0;
+                
+                // --- C: Orifice Area ---
+                const hasRuptureDisk = document.getElementById('rupture-disk').value === 'yes';
+                let A_req_mm2 = 0, orifice_capacity = 0, C_gas_const = 0;
+                if (W > 0 && k > 0 && P1_a > 0 && MW > 0) {
+                    const P1_kpa = P1_a * 1000;
+                    const Kd = 0.975, Kb = 1.0, Kc = hasRuptureDisk ? 0.9 : 1.0;
+                    const k_ratio_term = Math.pow(2 / (k + 1), (k + 1) / (k - 1));
+                    const k_constant = isNaN(k_ratio_term) ? 0 : Math.sqrt(k * k_ratio_term);
+                    C_gas_const = 0.03948 * k_constant;
+                    A_req_mm2 = (C_gas_const > 0) ? (W * Math.sqrt(T1_K * Z / MW)) / (C_gas_const * Kd * P1_kpa * Kb * Kc) : 0;
+                }
+                
+                let selectedSize = 'N/A', selectedArea = 0;
+                if (A_req_mm2 > 0) {
+                    for (const size in API_ORIFICES) {
+                        if (API_ORIFICES[size] >= A_req_mm2) {
+                            selectedSize = size;
+                            selectedArea = API_ORIFICES[size];
+                            break;
+                        }
+                    }
+                     if (selectedSize === 'N/A') { selectedSize = '> T'; selectedArea = A_req_mm2; }
+                }
+
+                if (selectedArea > 0 && C_gas_const > 0) {
+                     const P1_kpa = P1_a * 1000;
+                     const Kd = 0.975, Kb = 1.0, Kc = hasRuptureDisk ? 0.9 : 1.0;
+                     orifice_capacity = (selectedArea * C_gas_const * Kd * P1_kpa * Kb * Kc) / Math.sqrt(T1_K * Z / MW);
+                }
+
+                // --- D & E: Line Sizing ---
+                const mu_cp = parseFloat(document.getElementById('viscosity').value) || 0;
+                const mu_pas = mu_cp * 0.001;
+                const pipe_roughness = 0.000045; // m (commercial steel)
+                const R_gas = 8314.46; // J/(kmol*K)
+
+                // Inlet Line
+                const D_in = (parseFloat(document.getElementById('inlet-dia').value) || 0) * 0.0254; // in to m
+                const L_in = parseFloat(document.getElementById('inlet-len').value) || 0;
+                const elbows_in = parseFloat(document.getElementById('inlet-elbows').value) || 0;
+                let dP_in_kpa = 0, dP_in_percent = 0;
+                if (D_in > 0 && W > 0) {
+                    const A_in = Math.PI * (D_in**2) / 4;
+                    const rho_in = (P1_a * 1e6 * MW) / (Z * R_gas * T1_K);
+                    const v_in = (W / 3600) / (rho_in * A_in);
+                    const Re_in = (rho_in * v_in * D_in) / mu_pas;
+                    const f_in = (Re_in > 2300) ? 0.25 / (Math.log10((pipe_roughness / D_in) / 3.7 + 5.74 / Re_in**0.9))**2 : 64 / Re_in;
+                    const Leq_in = L_in + (elbows_in * 30 * D_in);
+                    const dP_in_pa = (f_in * Leq_in / D_in) * (rho_in * v_in**2) / 2;
+                    dP_in_kpa = dP_in_pa / 1000;
+                    dP_in_percent = (dP_in_kpa / (Pset_g * 1000)) * 100;
+                }
+                const inlet_status = dP_in_percent <= 3;
+                
+                // Outlet Line
+                const psvType = document.getElementById('psv-type').value;
+                const D_out = (parseFloat(document.getElementById('outlet-dia').value) || 0) * 0.0254; // in to m
+                const L_out = parseFloat(document.getElementById('outlet-len').value) || 0;
+                const elbows_out = parseFloat(document.getElementById('outlet-elbows').value) || 0;
+                const P_dest_g = parseFloat(document.getElementById('dest-pressure').value) || 0;
+                const P_dest_a = (P_dest_g + 0.1013) * 1e6; // Pa
+                let bp_mpag = 0, bp_percent = 0, mach_out = 0;
+                if (D_out > 0 && W > 0) {
+                    const T_out = T1_K * Math.pow(P_dest_a / (P1_a * 1e6), (k-1)/k);
+                    const rho_out = (P_dest_a * MW) / (Z * R_gas * T_out);
+                    const A_out = Math.PI * (D_out**2) / 4;
+                    const v_out = (W / 3600) / (rho_out * A_out);
+                    const c_sound = Math.sqrt(k * Z * R_gas * T_out / MW);
+                    mach_out = v_out / c_sound;
+                    const Re_out = (rho_out * v_out * D_out) / mu_pas;
+                    const f_out = (Re_out > 2300) ? 0.25 / (Math.log10((pipe_roughness / D_out) / 3.7 + 5.74 / Re_out**0.9))**2 : 64 / Re_out;
+                    const Leq_out = L_out + (elbows_out * 30 * D_out);
+                    const dP_out_pa = (f_out * Leq_out / D_out) * (rho_out * v_out**2) / 2;
+                    bp_mpag = dP_out_pa / 1e6;
+                    bp_percent = (bp_mpag / Pset_g) * 100;
+                }
+                const outlet_limit = psvType === 'conventional' ? 10 : 50;
+                const outlet_status = bp_percent <= outlet_limit;
+                
+                // --- UPDATE UI ---
+                document.getElementById('out-heat-load').textContent = Q.toLocaleString('en-US', { maximumFractionDigits: 0 });
+                document.getElementById('out-relief-pressure').textContent = P1_a.toFixed(4);
+                document.getElementById('out-relief-temp-k').textContent = T1_K.toFixed(2);
+                document.getElementById('out-req-flowrate').textContent = W.toLocaleString('en-US', { maximumFractionDigits: 0 });
+                document.getElementById('out-req-orifice-area').textContent = A_req_mm2.toLocaleString('en-US', { maximumFractionDigits: 2 });
+                document.getElementById('out-selected-orifice-size').textContent = selectedSize;
+                document.getElementById('out-selected-orifice-area').textContent = selectedArea.toLocaleString('en-US');
+                document.getElementById('out-orifice-capacity').textContent = orifice_capacity.toLocaleString('en-US', {maximumFractionDigits: 0});
+                
+                document.getElementById('out-inlet-dp-kpa').textContent = dP_in_kpa.toFixed(2);
+                document.getElementById('out-inlet-dp-percent').textContent = dP_in_percent.toFixed(2);
+                document.getElementById('out-inlet-status').className = inlet_status ? 'status-ok' : 'status-fail';
+                document.getElementById('out-inlet-status').textContent = inlet_status ? 'OK' : 'FAIL';
+                
+                document.getElementById('out-outlet-bp-mpag').textContent = bp_mpag.toFixed(4);
+                document.getElementById('out-outlet-bp-percent').textContent = bp_percent.toFixed(2);
+                document.getElementById('out-outlet-mach').textContent = mach_out.toFixed(3);
+                document.getElementById('outlet-criteria-text').textContent = outlet_limit;
+                document.getElementById('out-outlet-status').className = outlet_status ? 'status-ok' : 'status-fail';
+                document.getElementById('out-outlet-status').textContent = outlet_status ? 'OK' : 'FAIL';
+            }
+
+            allInputs.forEach(input => {
+                input.addEventListener('input', updateWettedAreaAndCalculate);
+            });
+            updateWettedAreaAndCalculate();
+        });
+    </script>
+</body>
+</html>
+
